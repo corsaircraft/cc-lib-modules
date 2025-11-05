@@ -1,7 +1,7 @@
 package cc.modules
 
 import org.bukkit.event.Listener
-import one.wabbit.reflection.parents
+import one.wabbit.reflection.supertypes
 import one.wabbit.data.Need
 import one.wabbit.data.closure
 import one.wabbit.data.shuffle
@@ -192,7 +192,7 @@ class ModuleLoader(val registration: ListenerRegistration) {
             return globalComponent.value.value
         }
 
-        val parents = type.parents()
+        val parents = type.supertypes()
         for (parent in parents) {
             @Suppress("UNCHECKED_CAST")
             val globalComponent = globalSubtypeInitializers[parent] as? GlobalComponentInitializer<T>
@@ -242,7 +242,7 @@ class ModuleLoader(val registration: ListenerRegistration) {
             return globalComponent.value.value
         }
 
-        val parents = type.parents()
+        val parents = type.supertypes()
         for (parent in parents) {
             @Suppress("UNCHECKED_CAST")
             val globalComponent = globalSubtypeInitializers[parent] as? GlobalComponentInitializer<T>
