@@ -1,64 +1,84 @@
 package cc.modules
 
-import org.bukkit.event.Listener
-import one.wabbit.reflection.supertypes
+import java.lang.IllegalStateException
+import java.lang.reflect.Constructor
+import java.lang.reflect.Type
+import java.util.SplittableRandom
 import one.wabbit.data.Need
 import one.wabbit.data.closure
 import one.wabbit.data.shuffle
 import one.wabbit.graph.toposort.Graph
-import java.lang.IllegalStateException
-import java.lang.reflect.Constructor
-import java.lang.reflect.Type
-import java.util.*
+import one.wabbit.reflection.supertypes
+import org.bukkit.event.Listener
 
+private class ModuleInstantiationException(message: String, cause: Throwable) :
+    Exception(message, cause)
 
-private class ModuleInstantiationException(message: String, cause: Throwable) : Exception(message, cause)
-private class MoreThanOneConstructor(val moduleClass: Class<out PluginModule>) : Exception("More than one constructor in class $moduleClass")
-private class UnknownModuleType(val type: Class<out PluginModule>): Exception("Unknown module type: $type")
-private class UnknownType(val type: Type): Exception("Unknown type: $type")
+private class MoreThanOneConstructor(val moduleClass: Class<out PluginModule>) :
+    Exception("More than one constructor in class $moduleClass")
+
+private class UnknownModuleType(val type: Class<out PluginModule>) :
+    Exception("Unknown module type: $type")
+
+private class UnknownType(val type: Type) : Exception("Unknown type: $type")
 
 @Throws(MoreThanOneConstructor::class)
-private fun moduleDependencies(moduleClass: Class<out PluginModule>): List<Class<out PluginModule>> {
+private fun moduleDependencies(
+    moduleClass: Class<out PluginModule>
+): List<Class<out PluginModule>> {
     try {
         val constructors = moduleClass.declaredConstructors
 
-        if (constructors.size != 1)
+        if (constructors.size != 1) {
             throw MoreThanOneConstructor(moduleClass)
+        }
         val constructor = constructors[0]
 
         return constructor.parameterTypes.mapNotNull {
-            if (PluginModule::class.java.isAssignableFrom(it))
+            if (PluginModule::class.java.isAssignableFrom(it)) {
                 it.asSubclass(PluginModule::class.java)
-            else null
+            } else {
+                null
+            }
         }
     } catch (e: Throwable) {
         if (e is VirtualMachineError) throw e
-        throw ModuleInstantiationException("Failed to instantiate module '$moduleClass': ${e.message}", e)
+        throw ModuleInstantiationException(
+            "Failed to instantiate module '$moduleClass': ${e.message}",
+            e,
+        )
     }
 }
 
-
 sealed class ClassMatcher<T> {
     data class Exact<T>(val type: Class<T>) : ClassMatcher<T>()
+
     data class Subtype<T>(val type: Class<T>) : ClassMatcher<T>()
+
     data class ListOf<T>(val type: Class<T>) : ClassMatcher<T>()
 }
 
 interface ListenerRegistration {
     fun register(l: Listener): Unit
+
     fun unregister(l: Listener): Unit
 
-    fun onModuleLoad(kClass: Class<out PluginModule>) { }
-    fun onModuleLoaded(module: PluginModule) { }
-    fun onModuleStart(module: PluginModule) { }
-    fun onModuleStarted(module: PluginModule) { }
+    fun onModuleLoad(kClass: Class<out PluginModule>) {}
+
+    fun onModuleLoaded(module: PluginModule) {}
+
+    fun onModuleStart(module: PluginModule) {}
+
+    fun onModuleStarted(module: PluginModule) {}
 }
 
 // val owner: JavaPlugin
 class ModuleLoader(val registration: ListenerRegistration) {
     // Type axis:
-    // - Global components: These are components that are created once and are available to all modules.
-    // - Per-module components: These are components that are created once per module and are available to that module.
+    // - Global components: These are components that are created once and are available to all
+    // modules.
+    // - Per-module components: These are components that are created once per module and are
+    // available to that module.
     // - Modules themselves: These are components that are modules themselves.
     //
     // Lazy/eager axis:
@@ -81,23 +101,25 @@ class ModuleLoader(val registration: ListenerRegistration) {
     private class GlobalComponent<T : Any>(
         val type: Class<out T>,
         val value: Need<T>,
-        val destruct: (Class<out T>, T) -> Unit
+        val destruct: (Class<out T>, T) -> Unit,
     )
 
     private class GlobalComponentInitializer<T>(
         val create: (Class<out T>) -> T,
-        val destruct: (Class<out T>, T) -> Unit
+        val destruct: (Class<out T>, T) -> Unit,
     )
 
     private val global = mutableMapOf<Class<*>, GlobalComponent<*>>()
-    // private val globalExactInitializers = mutableMapOf<Class<*>, PerModuleComponentInitializer<*>>()
+
+    // private val globalExactInitializers = mutableMapOf<Class<*>,
+    // PerModuleComponentInitializer<*>>()
     private val globalSubtypeInitializers = mutableMapOf<Class<*>, GlobalComponentInitializer<*>>()
     private val globalListInitializers = mutableMapOf<Class<*>, GlobalComponentInitializer<*>>()
 
     fun <T : Any> global(
         clazz: ClassMatcher<T>,
         destructor: (Class<out T>, T) -> Unit = { _, _ -> },
-        supplier: (Class<out T>) -> T
+        supplier: (Class<out T>) -> T,
     ) {
         when (clazz) {
             is ClassMatcher.Exact -> {
@@ -113,7 +135,8 @@ class ModuleLoader(val registration: ListenerRegistration) {
             }
             is ClassMatcher.ListOf -> {
                 val subtypeClass: Class<out T> = clazz.type.asSubclass(clazz.type)
-                globalListInitializers[subtypeClass] = GlobalComponentInitializer(supplier, destructor)
+                globalListInitializers[subtypeClass] =
+                    GlobalComponentInitializer(supplier, destructor)
             }
         }
     }
@@ -122,12 +145,12 @@ class ModuleLoader(val registration: ListenerRegistration) {
         val moduleType: Class<out PluginModule>,
         val componentType: Class<T>,
         val value: T,
-        val destruct: (PluginModule, Class<out T>, T) -> Unit
+        val destruct: (PluginModule, Class<out T>, T) -> Unit,
     )
 
     private data class SubcomponentInitializer<T>(
         val create: (Class<out PluginModule>, Class<out T>) -> T,
-        val destruct: (PluginModule, Class<out T>, T) -> Unit
+        val destruct: (PluginModule, Class<out T>, T) -> Unit,
     )
 
     private val exactSubcomponents = mutableMapOf<Class<*>, SubcomponentInitializer<*>>()
@@ -137,57 +160,49 @@ class ModuleLoader(val registration: ListenerRegistration) {
     fun <T> subcomponent(
         clazz: ClassMatcher<T>,
         destructor: (PluginModule, Class<out T>, T) -> Unit = { _, _, _ -> },
-        supplier: (Class<out PluginModule>, Class<out T>) -> T
+        supplier: (Class<out PluginModule>, Class<out T>) -> T,
     ) {
         when (clazz) {
             is ClassMatcher.Exact -> {
                 val subtypeClass: Class<out T> = clazz.type.asSubclass(clazz.type)
-                exactSubcomponents[subtypeClass] =
-                    SubcomponentInitializer<T>(supplier, destructor)
+                exactSubcomponents[subtypeClass] = SubcomponentInitializer<T>(supplier, destructor)
             }
             is ClassMatcher.Subtype -> {
                 val subtypeClass: Class<out T> = clazz.type.asSubclass(clazz.type)
-                subtypeComponents[subtypeClass] =
-                    SubcomponentInitializer<T>(supplier, destructor)
+                subtypeComponents[subtypeClass] = SubcomponentInitializer<T>(supplier, destructor)
             }
             is ClassMatcher.ListOf -> {
                 val subtypeClass: Class<out T> = clazz.type.asSubclass(clazz.type)
-                listComponents[subtypeClass] =
-                    SubcomponentInitializer<T>(supplier, destructor)
+                listComponents[subtypeClass] = SubcomponentInitializer<T>(supplier, destructor)
             }
         }
     }
 
     private enum class ModuleState {
-        ALLOCATED, STARTED
+        ALLOCATED,
+        STARTED,
     }
 
     private class ModuleComponent<T : PluginModule>(
         var state: ModuleState,
         val moduleType: Class<T>,
         var ref: T,
-        val dependencies: MutableMap<Class<*>, Subcomponent<*>>
+        val dependencies: MutableMap<Class<*>, Subcomponent<*>>,
     )
 
     private val modules = mutableMapOf<Class<out PluginModule>, ModuleComponent<*>>()
     private val startOrder = mutableListOf<Class<out PluginModule>>()
 
-    fun allLoadedModules(): List<PluginModule> {
-        return modules.values.map { it.ref }
-    }
+    fun allLoadedModules(): List<PluginModule> = modules.values.map { it.ref }
 
-    @Throws(
-        UnknownModuleType::class,
-        UnknownType::class
-    )
+    @Throws(UnknownModuleType::class, UnknownType::class)
     private fun <T : Any> getArg(
         moduleType: Class<out PluginModule>,
         subcomponents: MutableMap<Class<*>, Subcomponent<*>>,
-        type: Class<T>
+        type: Class<T>,
     ): T {
         // Try global components first
-        @Suppress("UNCHECKED_CAST")
-        val globalComponent = global[type] as? GlobalComponent<T>
+        @Suppress("UNCHECKED_CAST") val globalComponent = global[type] as? GlobalComponent<T>
         if (globalComponent != null) {
             return globalComponent.value.value
         }
@@ -195,7 +210,8 @@ class ModuleLoader(val registration: ListenerRegistration) {
         val parents = type.supertypes()
         for (parent in parents) {
             @Suppress("UNCHECKED_CAST")
-            val globalComponent = globalSubtypeInitializers[parent] as? GlobalComponentInitializer<T>
+            val globalComponent =
+                globalSubtypeInitializers[parent] as? GlobalComponentInitializer<T>
             if (globalComponent != null) {
                 val result = globalComponent.create(type)
                 global[type] = GlobalComponent(type, Need.now(result), globalComponent.destruct)
@@ -236,8 +252,7 @@ class ModuleLoader(val registration: ListenerRegistration) {
 
     fun <T : Any> get(type: Class<T>): T {
         // Try global components first
-        @Suppress("UNCHECKED_CAST")
-        val globalComponent = global[type] as? GlobalComponent<T>
+        @Suppress("UNCHECKED_CAST") val globalComponent = global[type] as? GlobalComponent<T>
         if (globalComponent != null) {
             return globalComponent.value.value
         }
@@ -245,7 +260,8 @@ class ModuleLoader(val registration: ListenerRegistration) {
         val parents = type.supertypes()
         for (parent in parents) {
             @Suppress("UNCHECKED_CAST")
-            val globalComponent = globalSubtypeInitializers[parent] as? GlobalComponentInitializer<T>
+            val globalComponent =
+                globalSubtypeInitializers[parent] as? GlobalComponentInitializer<T>
             if (globalComponent != null) {
                 val result = globalComponent.create(type)
                 global[type] = GlobalComponent(type, Need.now(result), globalComponent.destruct)
@@ -264,14 +280,11 @@ class ModuleLoader(val registration: ListenerRegistration) {
         throw UnknownType(type)
     }
 
-    @Throws(
-        UnknownModuleType::class,
-        UnknownType::class,
-        MoreThanOneConstructor::class
-    )
+    @Throws(UnknownModuleType::class, UnknownType::class, MoreThanOneConstructor::class)
     private fun <T : PluginModule> createModule(clazz: Class<T>): ModuleComponent<T> {
-        if (modules.containsKey(clazz))
+        if (modules.containsKey(clazz)) {
             throw IllegalStateException("Module already loaded: $clazz")
+        }
 
         @Suppress("UNCHECKED_CAST")
         val constructors = clazz.declaredConstructors as Array<Constructor<T>>
@@ -284,20 +297,27 @@ class ModuleLoader(val registration: ListenerRegistration) {
         val dependencies: MutableMap<Class<*>, Subcomponent<*>> = mutableMapOf()
 
         val parameters = constructor.genericParameterTypes
-        val arguments = parameters.map { type ->
-            if (type !is Class<*>) throw UnknownType(type)
-            getArg(clazz, dependencies, type)
-        }.toTypedArray()
+        val arguments =
+            parameters
+                .map { type ->
+                    if (type !is Class<*>) throw UnknownType(type)
+                    getArg(clazz, dependencies, type)
+                }
+                .toTypedArray()
 
         registration.onModuleLoad(clazz)
 
-        val module = try {
-            constructor.newInstance(*arguments)
-        } catch (e: Throwable) {
-            if (e is VirtualMachineError) throw e
+        val module =
+            try {
+                constructor.newInstance(*arguments)
+            } catch (e: Throwable) {
+                if (e is VirtualMachineError) throw e
 
-            throw ModuleInstantiationException("Failed to instantiate module '$clazz': ${e.message}", e)
-        }
+                throw ModuleInstantiationException(
+                    "Failed to instantiate module '$clazz': ${e.message}",
+                    e,
+                )
+            }
 
         startOrder.add(clazz)
 
@@ -333,7 +353,7 @@ class ModuleLoader(val registration: ListenerRegistration) {
         val module = modules[clazz] ?: throw IllegalStateException("Module not loaded '$clazz'")
 
         registration.register(module.ref)
-//        owner.server.pluginManager.registerEvents(module, owner)
+        //        owner.server.pluginManager.registerEvents(module, owner)
 
         registration.onModuleStart(module.ref)
         try {
@@ -351,8 +371,10 @@ class ModuleLoader(val registration: ListenerRegistration) {
     private val MODULE_INIT_RANDOM = SplittableRandom()
 
     fun load(initialModuleList: List<Class<out PluginModule>>) {
-        val allModules = closure(initialModuleList.toList()) { moduleDependencies(it) }.toMutableList()
-        val dependencies = allModules.flatMap { c -> moduleDependencies(c).map { Pair(c, it) } }.toMutableList()
+        val allModules =
+            closure(initialModuleList.toList()) { moduleDependencies(it) }.toMutableList()
+        val dependencies =
+            allModules.flatMap { c -> moduleDependencies(c).map { Pair(c, it) } }.toMutableList()
 
         // Introduce randomization to test a different initialization order each time.
         shuffle(allModules, MODULE_INIT_RANDOM)
@@ -379,7 +401,11 @@ class ModuleLoader(val registration: ListenerRegistration) {
 
                 for ((_, subcomponent) in module.dependencies) {
                     val c = subcomponent as Subcomponent<Any>
-                    subcomponent.destruct(module.ref, subcomponent.componentType, subcomponent.value)
+                    subcomponent.destruct(
+                        module.ref,
+                        subcomponent.componentType,
+                        subcomponent.value,
+                    )
                 }
 
                 module.dependencies.clear()
