@@ -34,12 +34,12 @@ publishing {
 }
 
 dependencies {
-    implementation("com.github.wabbit-corp:kotlin-data-need:1.2.0")
-    implementation("com.github.wabbit-corp:kotlin-data:3.0.0")
-    implementation("com.github.wabbit-corp:kotlin-extra-reflection:1.0.1")
-    implementation("com.github.wabbit-corp:kotlin-minilog:1.0.2")
-    implementation("com.github.wabbit-corp:kotlin-graph-toposort:2.0.0")
-    implementation("com.github.wabbit-corp:kotlin-levenshtein:1.1.0")
+    implementation("one.wabbit:kotlin-data-need:1.2.0")
+    implementation("one.wabbit:kotlin-data:3.0.0")
+    implementation("one.wabbit:kotlin-extra-reflection:1.0.1")
+    implementation("one.wabbit:kotlin-minilog:1.0.2")
+    implementation("one.wabbit:kotlin-graph-toposort:2.0.0")
+    implementation("one.wabbit:kotlin-levenshtein:1.1.0")
 
     testImplementation(kotlin("test"))
 
