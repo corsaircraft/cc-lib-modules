@@ -5,6 +5,8 @@ repositories {
     mavenCentral()
 
     maven("https://repo.papermc.io/repository/maven-public/")
+
+    maven("https://jitpack.io")
 }
 
 group   = "one.wabbit"
@@ -32,12 +34,12 @@ publishing {
 }
 
 dependencies {
-    implementation(project(":kotlin-data-need")) // 1.2.0
-    implementation(project(":kotlin-data")) // 3.0.0
-    implementation(project(":kotlin-extra-reflection")) // 1.0.1
-    implementation(project(":kotlin-minilog")) // 1.0.2
-    implementation(project(":kotlin-graph-toposort")) // 2.0.0
-    implementation(project(":kotlin-levenshtein")) // 1.1.0
+    implementation("one.wabbit:kotlin-data-need:1.2.0")
+    implementation("one.wabbit:kotlin-data:3.0.0")
+    implementation("one.wabbit:kotlin-extra-reflection:1.0.1")
+    implementation("one.wabbit:kotlin-minilog:1.0.2")
+    implementation("one.wabbit:kotlin-graph-toposort:2.0.0")
+    implementation("one.wabbit:kotlin-levenshtein:1.1.0")
 
     testImplementation(kotlin("test"))
 

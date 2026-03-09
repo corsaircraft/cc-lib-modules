@@ -4,7 +4,7 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        maven("https://repo.papermc.io/repository/maven-public/")
+
     }
 }
 
@@ -12,7 +12,7 @@ pluginManagement {
     repositories {
         google()
         gradlePluginPortal()
-        maven("https://repo.papermc.io/repository/maven-public/")
+
     }
     plugins {
         id("org.jetbrains.kotlin.jvm") version "2.3.10"
@@ -32,18 +32,3 @@ pluginManagement {
         id("net.minecrell.plugin-yml.bukkit") version "0.6.0"
     }
 }
-
-include(":kotlin-data-need")
-project(":kotlin-data-need").projectDir = file("../kotlin-data-need")
-include(":kotlin-data")
-project(":kotlin-data").projectDir = file("../kotlin-data")
-include(":kotlin-extra-reflection")
-project(":kotlin-extra-reflection").projectDir = file("../kotlin-extra-reflection")
-include(":kotlin-minilog")
-project(":kotlin-minilog").projectDir = file("../kotlin-minilog")
-include(":kotlin-graph-toposort")
-project(":kotlin-graph-toposort").projectDir = file("../kotlin-graph-toposort")
-include(":kotlin-levenshtein")
-project(":kotlin-levenshtein").projectDir = file("../kotlin-levenshtein")
-include(":kotlin-java-escape")
-project(":kotlin-java-escape").projectDir = file("../kotlin-java-escape")
