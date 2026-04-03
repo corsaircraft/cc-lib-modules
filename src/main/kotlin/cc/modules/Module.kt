@@ -6,6 +6,10 @@ import java.util.logging.Level
 import minilog.Log
 import org.bukkit.event.Listener
 
+@Target(AnnotationTarget.CLASS)
+@Retention(AnnotationRetention.RUNTIME)
+annotation class ModulePort
+
 object LogTag {
     // Used ONLY to debug code.
     val Debug = Log.Tag("debug", 'D', Level.INFO)

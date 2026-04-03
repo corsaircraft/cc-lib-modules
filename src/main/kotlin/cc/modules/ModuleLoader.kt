@@ -20,11 +20,29 @@ private class MoreThanOneConstructor(val moduleClass: Class<out PluginModule>) :
 private class UnknownModuleType(val type: Class<out PluginModule>) :
     Exception("Unknown module type: $type")
 
+private class UnknownModulePort(
+    val consumer: Class<out PluginModule>,
+    val port: Class<*>,
+) : Exception("Unknown module port for ${consumer.name}: ${port.name}")
+
+private class DuplicateModulePort(
+    val port: Class<*>,
+    val left: Class<out PluginModule>,
+    val right: Class<out PluginModule>,
+) : Exception("Multiple modules provide port ${port.name}: ${left.name}, ${right.name}")
+
 private class UnknownType(val type: Type) : Exception("Unknown type: $type")
+
+private fun isModulePort(type: Class<*>): Boolean =
+    type.isInterface && type.isAnnotationPresent(ModulePort::class.java)
+
+private fun modulePorts(moduleClass: Class<out PluginModule>): Set<Class<*>> =
+    moduleClass.supertypes().filter(::isModulePort).toSet()
 
 @Throws(MoreThanOneConstructor::class)
 private fun moduleDependencies(
-    moduleClass: Class<out PluginModule>
+    moduleClass: Class<out PluginModule>,
+    providers: Map<Class<*>, Class<out PluginModule>> = emptyMap(),
 ): List<Class<out PluginModule>> {
     try {
         val constructors = moduleClass.declaredConstructors
@@ -35,10 +53,10 @@ private fun moduleDependencies(
         val constructor = constructors[0]
 
         return constructor.parameterTypes.mapNotNull {
-            if (PluginModule::class.java.isAssignableFrom(it)) {
-                it.asSubclass(PluginModule::class.java)
-            } else {
-                null
+            when {
+                PluginModule::class.java.isAssignableFrom(it) -> it.asSubclass(PluginModule::class.java)
+                isModulePort(it) -> providers[it] ?: throw UnknownModulePort(moduleClass, it)
+                else -> null
             }
         }
     } catch (e: Throwable) {
@@ -191,9 +209,38 @@ class ModuleLoader(val registration: ListenerRegistration) {
     )
 
     private val modules = mutableMapOf<Class<out PluginModule>, ModuleComponent<*>>()
+    private val modulePortProviders = mutableMapOf<Class<*>, Class<out PluginModule>>()
     private val startOrder = mutableListOf<Class<out PluginModule>>()
 
     fun allLoadedModules(): List<PluginModule> = modules.values.map { it.ref }
+
+    private fun knownModulePortProviders(
+        additionalModules: Collection<Class<out PluginModule>> = emptyList()
+    ): Map<Class<*>, Class<out PluginModule>> {
+        val result = modulePortProviders.toMutableMap()
+
+        for (moduleClass in additionalModules) {
+            for (port in modulePorts(moduleClass)) {
+                val existing = result[port]
+                if (existing != null && existing != moduleClass) {
+                    throw DuplicateModulePort(port, existing, moduleClass)
+                }
+                result[port] = moduleClass
+            }
+        }
+
+        return result
+    }
+
+    private fun registerModulePorts(moduleClass: Class<out PluginModule>) {
+        for (port in modulePorts(moduleClass)) {
+            val existing = modulePortProviders[port]
+            if (existing != null && existing != moduleClass) {
+                throw DuplicateModulePort(port, existing, moduleClass)
+            }
+            modulePortProviders[port] = moduleClass
+        }
+    }
 
     @Throws(UnknownModuleType::class, UnknownType::class)
     private fun <T : Any> getArg(
@@ -240,6 +287,12 @@ class ModuleLoader(val registration: ListenerRegistration) {
             }
         }
 
+        if (isModulePort(type)) {
+            val moduleClass = modulePortProviders[type] ?: throw UnknownModulePort(moduleType, type)
+            val module = modules[moduleClass]?.ref ?: throw UnknownModuleType(moduleClass)
+            return type.cast(module)
+        }
+
         if (PluginModule::class.java.isAssignableFrom(type)) {
             val clazz = type.asSubclass(PluginModule::class.java)
             val module = modules[clazz]?.ref
@@ -268,6 +321,12 @@ class ModuleLoader(val registration: ListenerRegistration) {
                 unloadOrder.add(type)
                 return result
             }
+        }
+
+        if (isModulePort(type)) {
+            val moduleClass = modulePortProviders[type] ?: throw UnknownType(type)
+            val module = modules[moduleClass]?.ref ?: throw UnknownModuleType(moduleClass)
+            return type.cast(module)
         }
 
         if (PluginModule::class.java.isAssignableFrom(type)) {
@@ -329,6 +388,8 @@ class ModuleLoader(val registration: ListenerRegistration) {
             throw ModuleInstantiationException("Failed to load module '$clazz': ${e.message}", e)
         }
 
+        registerModulePorts(clazz)
+
         val state = ModuleComponent(state = ModuleState.ALLOCATED, clazz, module, dependencies)
         modules[clazz] = state
         unloadOrder.add(clazz)
@@ -371,10 +432,11 @@ class ModuleLoader(val registration: ListenerRegistration) {
     private val MODULE_INIT_RANDOM = SplittableRandom()
 
     fun load(initialModuleList: List<Class<out PluginModule>>) {
+        val providers = knownModulePortProviders(initialModuleList)
         val allModules =
-            closure(initialModuleList.toList()) { moduleDependencies(it) }.toMutableList()
+            closure(initialModuleList.toList()) { moduleDependencies(it, providers) }.toMutableList()
         val dependencies =
-            allModules.flatMap { c -> moduleDependencies(c).map { Pair(c, it) } }.toMutableList()
+            allModules.flatMap { c -> moduleDependencies(c, providers).map { Pair(c, it) } }.toMutableList()
 
         // Introduce randomization to test a different initialization order each time.
         shuffle(allModules, MODULE_INIT_RANDOM)
@@ -424,6 +486,7 @@ class ModuleLoader(val registration: ListenerRegistration) {
 
         this.unloadOrder.clear()
         modules.clear()
+        modulePortProviders.clear()
         global.clear()
     }
 }
